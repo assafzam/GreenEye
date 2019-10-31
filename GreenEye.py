@@ -1,10 +1,13 @@
 #!/usr/bin/python
-import glob
 import os
 import json
 from PIL import Image, ImageDraw
 
 
+# returns list of images, each image is a copy of an image from @images with the
+# polygons from the relevant polygons from @polygons
+# param @color is the color of the new polygons
+# param @width is the width of the outline of the new polygons.
 def add_polygons(images, polygons, color, width):
     new_images = []
     for img, poly in zip(images, polygons):
@@ -20,15 +23,14 @@ def add_polygons(images, polygons, color, width):
     return new_images
 
 
-# returns list of pairs, each pair is (Image file, image name) from path @p
-def load_images(p):
-    # return array of images
-    images_list = os.listdir(p)
+# returns list of open images files from path @path
+def load_images(path):
+    images_list = os.listdir(path)
     images_list.sort()
     loaded_images = []
     for img_name in images_list:
-        if img_name[36] == ".":
-            img = Image.open(p + img_name).convert('RGBA')
+        if img_name[36] == ".":  # checks that an image is not copy (e.g with (1).jpg at the end)
+            img = Image.open(path + img_name).convert('RGBA')
             draw = ImageDraw.Draw(img)
             draw.text((0, 0), img_name)
             loaded_images.append(img)
@@ -36,18 +38,21 @@ def load_images(p):
     return loaded_images
 
 
+# returns list of coordinates read from json files in @path
 def load_polygons(path):
     json_list = os.listdir(path)
     json_list.sort()
     loaded_polygons = []
     for j in json_list:
-        if j[36] == ".":
-            with open(path + "/" + j) as p:
+        if j[36] == ".":   # checks that an image is not copy (e.g with (1).jpg at the end)
+            with open(path + j) as p:
                 js = json.load(p)
                 loaded_polygons.append(js)
     return loaded_polygons
 
 
+# returns list of images, each image combined from 3 images, each on from the same index in @l1, @l2, @l3.
+# the image size is 2100X512
 def combine_images(l1, l2, l3):
     combined_images = []
 
@@ -67,6 +72,27 @@ def combine_images(l1, l2, l3):
 
         combined_images.append(new_im)
     return combined_images
+
+
+# calculate precision:
+# @true_positive is the amount of bounding boxes from the prediction that where true(also in ground truth file)
+# @false_positive is the amount of bounding boxes from the prediction that where false - not in ground truth
+# @precision = @true_positive / (@true_positive + @false_positive).
+def calculate_precision(ground_truth, prediction):
+
+    true_positive = 0
+    false_positive = 0
+
+    # iterate on each polygon from the prediction and check if it in the ground truth
+    for i in range(0, len(ground_truth)):            # for each image
+        for key in prediction[i]:              # for each key (triangles and circles)
+            for c in prediction[i][key]:    # for each polygon
+                if c in ground_truth_polygons[i][key]:
+                    true_positive += 1
+                else:
+                    false_positive += 1
+
+    return true_positive / (true_positive + false_positive)
 
 
 # ....paths.....
@@ -89,31 +115,21 @@ both_images = add_polygons(ground_truth_images, prediction_polygons, 'yellow', 2
 # merge 3 lists of images to list of big image contain the relevant image from each list
 combined = combine_images(orig_imgs, ground_truth_images, both_images)
 
+# calculate the precision:
+precision = calculate_precision(ground_truth_polygons, prediction_polygons)
 
-"""
-calculate precision:
-@ground_truth_amount is the total amount of positives
-@true_positive is the amount of bounding boxes from the prediction that where true(also in ground truth file)
-@false_positive is the amount of bounding boxes from the prediction that where false - not in ground truth
-@precision = @true_positive / (@true_positive + @false_positive). 
-"""
-ground_truth_amount = 0
-true_positive = 0
-false_positive = 0
+# print precision to screen
+print("precision is: " + str(precision))
 
-for i in range(0, len(ground_truth_polygons)):
-    ground_truth_amount += len(ground_truth_polygons[i]['circle']) + len(ground_truth_polygons[i]['triangle'])
-    for c in prediction_polygons[i]['circle']:
-        if c in ground_truth_polygons[i]['circle']:
-            true_positive += 1
-        else:
-            false_positive += 1
+# create new directory 'combined' to save the new images there
+try:
+    if not os.path.exists('./combined/'):
+        os.makedirs('./combined/')
+except OSError:
+    print('Error: Creating directory. ' + "combined")
 
-precision = true_positive/(true_positive+false_positive)
-
-print("precision is:")
-print(precision)
+# save and show images:
 for x in range(0, len(combined)):
-    combined[x].save(str(x) + ".jpg")
-    combined[x].show()
+    combined[x].save('combined/' + str(x) + '.jpg')
+    # combined[x].show()
 
